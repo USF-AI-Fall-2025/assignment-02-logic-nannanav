@@ -158,7 +158,7 @@ class KnowledgeBase:
                         if self._contradicts(conclusion, True):
                             print(f"Contradiction detected during inference: {self._expr_to_str(conclusion)}")
                             self._add_fact(conclusion, False)
-                            continue
+                            return
                         self._add_fact(conclusion, True)
                         changed = True
 
@@ -183,8 +183,8 @@ class KnowledgeBase:
                     val, proof = self._backward_chain(premise, visited)
                     if val is True:
                         return True, [(expr, f"Inferred from {self._expr_to_str(premise)} implies {self._expr_to_str(conclusion)}")] + proof
-                    if val is False:
-                        return False, [(expr, f"Cannot hold because {self._expr_to_str(premise)} is false")] + proof
+                    # if val is False:
+                    #     return False, [(expr, f"Cannot hold because {self._expr_to_str(premise)} is false")] + proof
 
             return None, [(expr, "Unknown")]
 
@@ -255,6 +255,10 @@ class KnowledgeBase:
             if truth:
                 self._add_fact(expr.left, True)
                 self._add_fact(expr.right, True)
+        elif isinstance(expr, Or):
+            if not truth:
+                self._add_fact(expr.left, False)
+                self._add_fact(expr.right, False)
 
     def _contradicts(self, expr, truth):
         if isinstance(expr, Symbol):
@@ -263,7 +267,35 @@ class KnowledgeBase:
         if isinstance(expr, Not):
             return self._contradicts(expr.expr, not truth)
         if isinstance(expr, And):
-            return self._contradicts(expr.left, truth) or self._contradicts(expr.right, truth)
+            if truth:
+                return self._contradicts(expr.left, True) or self._contradicts(expr.right, True)
+            else:
+                left_true = self._evaluate(expr.left) is True
+                right_true = self._evaluate(expr.right) is True
+                return left_true and right_true
+        if isinstance(expr, Or):
+            if truth:
+                # (A or B) is true contradicts if both A and B are known false
+                left_false = self._evaluate(expr.left) is False
+                right_false = self._evaluate(expr.right) is False
+                return left_false and right_false
+            else:
+                # (A or B) is false contradicts if either A or B is known true
+                left_true = self._evaluate(expr.left) is True
+                right_true = self._evaluate(expr.right) is True
+                return left_true or right_true
+        if isinstance(expr, Implies):
+            if truth:
+                # (A implies B) being true contradicts if A is true and B is false
+                left_true = self._evaluate(expr.left) is True
+                right_false = self._evaluate(expr.right) is False
+                return left_true and right_false
+            else:
+                # (A implies B) being false contradicts if A is false or B is true
+                # because (A implies B) is false only when A is true and B is false
+                left_false = self._evaluate(expr.left) is False
+                right_true = self._evaluate(expr.right) is True
+                return left_false or right_true
         return False
 
     def _evaluate(self, expr):
